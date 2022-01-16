@@ -1,0 +1,291 @@
+
+name: Deploy SRS to DigitalOcean droplet
+
+on:
+  # Run the workflow when push to to the main branch.
+  push:
+    branches:
+      - main
+  # Allow manually run the workflow, see https://docs.github.com/en/actions/managing-workflow-runs/manually-running-a-workflow
+  workflow_dispatch:
+
+jobs:
+  #####################################################################################################################
+  # Verify the required secrets, please follow the usage.
+  verification:
+    name: verify-required-secrets
+    runs-on: ubuntu-20.04
+    env:
+      DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      DIGITALOCEAN_SSH_PRIVATEKEY: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+      DIGITALOCEAN_SSH_PUBLICKEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLICKEY }}
+    if: ${{ github.event.repository.name != 'srs-droplet-template' }}
+    steps:
+      - name: Check for secrets.DIGITALOCEAN_ACCESS_TOKEN
+        if: ${{ ! env.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: echo "::error title=Config Error::Please set the DIGITALOCEAN_ACCESS_TOKEN at Settings/Secrets"
+
+      - name: Check for secrets.DIGITALOCEAN_SSH_PRIVATEKEY
+        if: ${{ ! env.DIGITALOCEAN_SSH_PRIVATEKEY }}
+        run: echo "::error title=Config Error::Please set the DIGITALOCEAN_SSH_PRIVATEKEY at Settings/Secrets"
+
+      - name: Check for secrets.DIGITALOCEAN_SSH_PUBLICKEY
+        if: ${{ ! env.DIGITALOCEAN_SSH_PUBLICKEY }}
+        run: echo "::error title=Config Error::Please set the DIGITALOCEAN_SSH_PUBLICKEY at Settings/Secrets"
+
+      - name: Check summary
+        if: ${{ ! env.DIGITALOCEAN_ACCESS_TOKEN || ! env.DIGITALOCEAN_SSH_PRIVATEKEY || ! env.DIGITALOCEAN_SSH_PUBLICKEY }}
+        run: exit 1
+
+  #####################################################################################################################
+  # Create ssh-key and droplet if not exists
+  create:
+    name: create-resources
+    runs-on: ubuntu-20.04
+    needs: verification
+    outputs:
+      SRS_KEYID: ${{ steps.create-srs-keyid.outputs.SRS_KEYID }}
+      SRS_DROPLETID: ${{ steps.create-srs-server.outputs.SRS_DROPLETID }}
+      SRS_EIP: ${{ steps.create-srs-server.outputs.SRS_EIP }}
+      SRS_PIP: ${{ steps.create-srs-server.outputs.SRS_PIP }}
+    if: ${{ github.event.repository.name != 'srs-droplet-template' }}
+    steps:
+      - name: Install DigitalOcean doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}"
+
+      ################################################################
+      # Create a droplet with ssh-keys, summary:
+      #   1. Create ssh-key with name srs-key, with tag srs
+      #   2. Create droplet with name srs-server
+      #   3. SSH to droplet, install software docker
+      ################################################################
+      # Query or create the ssh key. Set the env variable:
+      #   SRS_KEYID xxx The ssh-key id of name srs-key.
+      - name: Create ssh-key srs-key
+        id: create-srs-keyid
+        run: |
+          SRS_KEYID=$(doctl compute ssh-key list --no-header --format ID,Name |grep srs-key |awk '{print $1}')
+          if [[ $SRS_KEYID == '' ]]; then
+            doctl compute ssh-key create srs-key --public-key "${{ secrets.DIGITALOCEAN_SSH_PUBLICKEY }}"
+            SRS_KEYID=$(doctl compute ssh-key list --no-header |grep srs-key |awk '{print $1}')
+          fi
+          echo "SRS_KEYID=$SRS_KEYID" >> $GITHUB_ENV
+          echo "::set-output name=SRS_KEYID::$SRS_KEYID"
+
+      # Set the env variable:
+      #   SRS_DROPLETID xxx The droplet id of name srs-server.
+      #   SRS_EIP xxx The droplet public IPv4 address.
+      #   SRS_PIP xxx The droplet private IPv4 address.
+      - name: Create droplet srs-server
+        id: create-srs-server
+        run: |
+          SRS_DROPLETID=$(doctl compute droplet get srs-server --format ID --no-header |awk '{print $1}')
+          if [[ $SRS_DROPLETID == '' ]]; then
+            doctl compute droplet create srs-server --tag-name srs --ssh-keys ${{ env.SRS_KEYID }} \
+              --image centos-7-x64 --size s-1vcpu-1gb --region sgp1 --wait
+            SRS_DROPLETID=$(doctl compute droplet get srs-server --format ID --no-header)
+
+            # Wait for SSH port to ready
+            sleep 30 # TODO: FIXME: Detect the 22 port.
+            echo "SRS_FRESH_DROPLET=YES" >> $GITHUB_ENV
+          fi
+
+          SRS_EIP=$(doctl compute droplet get srs-server --format PublicIPv4 --no-header)
+          SRS_PIP=$(doctl compute droplet get srs-server --format PrivateIPv4 --no-header)
+          echo "SRS_DROPLETID=$SRS_DROPLETID" >> $GITHUB_ENV
+          echo "SRS_EIP=$SRS_EIP" >> $GITHUB_ENV
+          echo "SRS_PIP=$SRS_PIP" >> $GITHUB_ENV
+          echo "::set-output name=SRS_DROPLETID::$SRS_DROPLETID"
+          echo "::set-output name=SRS_EIP::$SRS_EIP"
+          echo "::set-output name=SRS_PIP::$SRS_PIP"
+          echo "SRS_DROPLETID: $SRS_DROPLETID, SRS_EIP: $SRS_EIP, SRS_PIP: $SRS_PIP"
+
+      - name: Install depends softwares in srs-server droplet
+        uses: appleboy/ssh-action@master
+        with:
+          username: root
+          host: ${{ env.SRS_EIP }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+          timeout: 120s
+          script: |
+            yum install -y docker
+            systemctl enable docker
+            systemctl start docker
+            systemctl status docker
+
+  #####################################################################################################################
+  # Deploy SRS and HTTX proxy to droplet
+  deploy:
+    name: deploy-srs
+    runs-on: ubuntu-20.04
+    needs: create
+    env:
+      SRS_KEYID: ${{ needs.create.outputs.SRS_KEYID }}
+      SRS_DROPLETID: ${{ needs.create.outputs.SRS_DROPLETID }}
+      SRS_EIP: ${{ needs.create.outputs.SRS_EIP }}
+      SRS_PIP: ${{ needs.create.outputs.SRS_PIP }}
+    if: ${{ github.event.repository.name != 'srs-droplet-template' }}
+    steps:
+      # Checkout the repository
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install DigitalOcean doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}"
+
+      ################################################################
+      # Start the HTTPX proxy with HTTPS, summary:
+      #   1. Create the SSL file from secrets or generate it.
+      #   2. SSL private key is /root/server.key, SSL public key is /root/server.crt
+      #   3. Restart the httpx docker with HTTP and HTTPS proxy to SRS
+      ################################################################
+      - name: Create ssl files for HTTPS
+        env:
+          DIGITALOCEAN_SSL_KEY: ${{ secrets.DIGITALOCEAN_SSL_KEY }}
+          DIGITALOCEAN_SSL_CERT: ${{ secrets.DIGITALOCEAN_SSL_CERT }}
+        uses: appleboy/ssh-action@master
+        with:
+          username: root
+          host: ${{ env.SRS_EIP }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+          envs: DIGITALOCEAN_SSL_KEY,DIGITALOCEAN_SSL_CERT
+          script: |
+            if [[ $DIGITALOCEAN_SSL_KEY != '' && $DIGITALOCEAN_SSL_CERT != '' ]]; then
+              echo "$DIGITALOCEAN_SSL_KEY" > /root/server.key
+              echo "$DIGITALOCEAN_SSL_CERT" > /root/server.crt
+            fi
+
+            if [[ ! -f /root/server.key ]]; then
+              openssl genrsa -out /root/server.key 2048
+              openssl req -new -x509 -key /root/server.key -out /root/server.crt -days 3650 -subj "/C=CN/ST=Beijing/L=Beijing/O=Me/OU=Me/CN=example.com"
+            fi
+
+      - name: Start HTTPX proxy for SRS
+        uses: appleboy/ssh-action@master
+        with:
+          username: root
+          host: ${{ env.SRS_EIP }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+          envs: SRS_PIP
+          script: |
+            for ((i=0; i < 5; i++)); do
+              if [[ $(docker ps -f name=httpx |wc -l) -eq 1 ]]; then echo "Killed"; break; fi
+              docker kill -s SIGKILL httpx
+              sleep 0.3;
+            done
+
+            docker run -d -it --rm --privileged -v /root:/root \
+              --name httpx -p 80:80 -p 443:443 ossrs/httpx:v1.0.19 \
+              ./bin/httpx-static -http 80 -https 443 -ssk /root/server.key -ssc /root/server.crt \
+                -proxy http://$SRS_PIP:1985/api/ \
+                -proxy http://$SRS_PIP:1985/rtc/ \
+                -proxy http://$SRS_PIP:8080/
+
+      ################################################################
+      # Start the SRS docker, summary:
+      #   1. Copy the conf/droplet.conf to remote
+      #   2. Restart the srs docker, enable Live Streaming and WebRTC
+      #   3. Show summary of actions
+      ################################################################
+      - name: Copy the config for SRS
+        uses: appleboy/scp-action@master
+        with:
+          username: root
+          host: ${{ env.SRS_EIP }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+          source: "conf/droplet.conf"
+          target: "/root/conf/droplet.conf"
+
+      - name: Start SRS by docker
+        uses: appleboy/ssh-action@master
+        with:
+          username: root
+          host: ${{ env.SRS_EIP }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
+          script: |
+            for ((i=0; i < 5; i++)); do
+              if [[ $(docker ps -f name=srs |wc -l) -eq 1 ]]; then echo "Killed"; break; fi
+              docker kill -s SIGKILL srs
+              sleep 0.3;
+            done
+
+            docker pull ossrs/srs:4
+            docker run -d -it --rm --privileged --name srs -v /root:/root \
+              -p 1935:1935 -p 1985:1985 -p 8080:8080 -p 8000:8000/udp \
+              ossrs/srs:4 ./objs/srs -c /root/droplet.conf
+
+      - name: Done
+        run: |
+          echo "Key: ${{ env.SRS_KEYID }}, Server: ${{ env.SRS_DROPLETID }}, IP: ${{ env.SRS_EIP }}"
+          doctl compute droplet list --tag-name srs --format Name,Region,Status,VCPUs,Memory,Disk
+          echo ""
+          echo "Please access by:"
+          echo "    http://${{ env.SRS_EIP }}"
+
+  #####################################################################################################################
+  # Show public ip on README
+  show:
+    name: update-readme
+    runs-on: ubuntu-20.04
+    needs: [create, deploy]
+    env:
+      SRS_KEYID: ${{ needs.create.outputs.SRS_KEYID }}
+      SRS_DROPLETID: ${{ needs.create.outputs.SRS_DROPLETID }}
+      SRS_EIP: ${{ needs.create.outputs.SRS_EIP }}
+      SRS_PIP: ${{ needs.create.outputs.SRS_PIP }}
+    if: ${{ github.event.repository.name != 'srs-droplet-template' }}
+    steps:
+      # Checkout the repository
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install DigitalOcean doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}"
+
+      ################################################################
+      # (Optional) Update the README to update the SRS ip
+      ################################################################
+      # (Optional) Update README if EIP changed.
+      - name: (Optional) Update README
+        continue-on-error: true
+        if: ${{ github.event.repository.name != 'srs-droplet-template' }}
+        run: |
+          EIP=$(grep 'Publish RTMP to rtmp' README.md |awk -F '://' 'NR==1{print $2}'| awk -F '/' '{print $1}')
+          echo "README EIP is $EIP"
+          if [[ $EIP != '' && $EIP != $SRS_EIP ]]; then
+            sed -i "s/$EIP/$SRS_EIP/g" README.md
+            echo "README_CHANGED=true" >> $GITHUB_ENV
+          fi
+
+      # (Optional) Commit modified files
+      - name: (Optional) Commit files
+        if: ${{ env.README_CHANGED == 'true' }}
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Update README if EIP changed."
+
+      # (Optional) Push changes
+      - name: (Optional) Push changes
+        if: ${{ env.README_CHANGED == 'true' }}
+        uses: ad-m/github-push-action@master
+        with:
+          branch: main
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Done
+        run: |
+          echo "README_CHANGED: $README_CHANGED"
+          echo "Key: ${{ env.SRS_KEYID }}, Server: ${{ env.SRS_DROPLETID }}, IP: ${{ env.SRS_EIP }}"
+          doctl compute droplet list --tag-name srs --format Name,Region,Status,VCPUs,Memory,Disk
+          echo ""
+          echo "Please access by:"
+          echo "    http://${{ env.SRS_EIP }}"
+
