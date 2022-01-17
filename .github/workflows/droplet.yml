@@ -187,19 +187,9 @@ jobs:
 
       ################################################################
       # Start the SRS docker, summary:
-      #   1. Copy the conf/droplet.conf to remote
-      #   2. Restart the srs docker, enable Live Streaming and WebRTC
-      #   3. Show summary of actions
+      #   1. Restart the srs docker, enable Live Streaming and WebRTC
+      #   2. Show summary of actions
       ################################################################
-      - name: Copy the config for SRS
-        uses: appleboy/scp-action@master
-        with:
-          username: root
-          host: ${{ env.SRS_EIP }}
-          key: ${{ secrets.DIGITALOCEAN_SSH_PRIVATEKEY }}
-          source: "conf/droplet.conf"
-          target: "/root/conf/droplet.conf"
-
       - name: Start SRS by docker
         uses: appleboy/ssh-action@master
         with:
@@ -214,9 +204,9 @@ jobs:
             done
 
             docker pull ossrs/droplet:4
-            docker run -d -it --rm --privileged --name srs -v /root:/root \
+            docker run -d -it --rm --privileged --name srs \
               -p 1935:1935 -p 1985:1985 -p 8080:8080 -p 8000:8000/udp \
-              ossrs/droplet:4 ./objs/srs -c /root/droplet.conf
+              ossrs/droplet:4 ./objs/srs -c conf/docker.conf
 
       - name: Done
         run: |
