@@ -213,10 +213,10 @@ jobs:
               sleep 0.3;
             done
 
-            docker pull ossrs/srs:4
+            docker pull ossrs/droplet:4
             docker run -d -it --rm --privileged --name srs -v /root:/root \
               -p 1935:1935 -p 1985:1985 -p 8080:8080 -p 8000:8000/udp \
-              ossrs/srs:4 ./objs/srs -c /root/droplet.conf
+              ossrs/droplet:4 ./objs/srs -c /root/droplet.conf
 
       - name: Done
         run: |
