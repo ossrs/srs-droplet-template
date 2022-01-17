@@ -14,7 +14,15 @@ check by [doctl](https://docs.digitalocean.com/reference/doctl/how-to/install/):
 doctl auth init -t PERSONAL_ACCESS_TOKEN
 ```
 
-**Step 2:** Click the [<kbd>Use this template</kbd>](https://github.com/ossrs/srs-droplet-template/generate) to create your
-repository, then wait for your repository to be ready(the **Usage** will changed automatically), and follow the new
-usage to finish the setup.
+**Step 2:** Generate **SSH Private Key** and **SSH Public Key** to access the droplet:
+
+```bash
+ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_droplet -q -N ""
+```
+
+**Step 3:** Click the [<kbd>Use this template</kbd>](https://github.com/ossrs/srs-droplet-template/generate) to create
+your repository, then wait for it to be ready.
+
+> Note: The **Usage** of your new repository will be updated automatically, and please follow the **new Usage** to
+> finish the setup.
 

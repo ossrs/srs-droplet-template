@@ -8,7 +8,7 @@ Deploy SRS to DigitalOcean droplet.
 ## Usage
 
 - [x] Step 1: Create a **Personal Access Token**
-- [ ] Step 2: Generate **SSH Private Key** and **SSH Public Key**
+- [x] Step 2: Generate **SSH Private Key** and **SSH Public Key**
 - [ ] Step 3: Set the **secrets**
 - [ ] Step 4: Click **Run workflow**
 
@@ -45,21 +45,8 @@ Try to modify the [README.md](README.md), then push to your repository, your dro
 
 ## HTTPS by SSL files (Optional)
 
-If want to enable the HTTPS feature, you must have got a domain name. Please add a DNS A record, for example:
-
-| Type | Name | Data         |
-| ---  | ---  | ---          |
-| A    | @    | 81.70.125.89 |
-| A    | www  | 81.70.125.89 |
-
-> Note: It's also OK to set your client `/etc/hosts` if not got a domain name.
-
-You also need a SSL cert from [ssls.com](https://www.ssls.com/) as such, or generate a self-signed SSL cert by:
-
-```bash
-openssl genrsa -out server.key 2048
-openssl req -new -x509 -key server.key -out server.crt -days 3650 -subj "/C=CN/ST=Beijing/L=Beijing/O=Me/OU=Me/CN=example.com"
-```
+For HTTPS, you need a SSL cert from CA, such as [ssls.com](https://www.ssls.com/), or the actions will generate a
+self-signed SSL cert.
 
 Please set the bellow [secrets](https://github.com/ossrs/%NAME%/settings/secrets/actions),
 then click the [Run workflow](https://github.com/ossrs/%NAME%/actions/workflows/droplet.yml) manually:
@@ -69,17 +56,10 @@ then click the [Run workflow](https://github.com/ossrs/%NAME%/actions/workflows/
 
 > Note: This is optional, and the workflow will generate a self-signed if the secrets are not assigned.
 
-> For self-signed SSL certificate, please click the blank of page, and enter the magic word `thisisunsafe` without space, please read [Command to Trust a Certificate in Chrome](https://www.youtube.com/watch?v=7J3vSN3pCjI)
+> For self-signed SSL certificate, please click the blank of page, and enter the magic word `thisisunsafe` without
+> space, please read [Command to Trust a Certificate in Chrome](https://www.youtube.com/watch?v=7J3vSN3pCjI)
 
 > If you got a domain name, please setup the DNS zone with the droplet IP.
-
-After the workflow finished, to access the HTTPS by your domain name, like `example.com`:
-
-* Website is https://example.com
-* Publish RTMP to rtmp://example.com/live/livestream
-* Play RTMP from rtmp://example.com/live/livestream
-* Play HTTP-FLV from [https://example.com/live/livestream.flv](https://example.com/players/srs_player.html?stream=livestream.flv&&autostart=true)
-* Play HLS from [https://example.com/live/livestream.m3u8](https://example.com/players/srs_player.html?stream=livestream.m3u8&&autostart=true)
 
 > Note: Other proxy servers also work well with SRS, for example,
 > [Nginx](https://github.com/ossrs/srs/issues/2881#nginx-proxy) or
@@ -98,14 +78,7 @@ doctl compute ssh-key list |grep srs-key
 A droplet with name `srs-server`:
 
 ```bash
-doctl compute droplet get srs-server \
-  --format ID,Name,PublicIPv4,PrivateIPv4,Memory,VCPUs,Disk,Region,Status
-```
-
-A public ip:
-
-```bash
-doctl compute droplet get srs-server --no-header --format PublicIPv4
+doctl compute droplet get srs-server
 ```
 
 To remove all resources:
