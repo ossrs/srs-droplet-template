@@ -1,6 +1,6 @@
 # %NAME%
 
-![](http://ossrs.net/gif/v1/sls.gif?site=github.com&path=/k8s/droplet/ossrs/%NAME%)
+![](http://ossrs.net/gif/v1/sls.gif?site=github.com&path=/tmpl/vm/droplet/ossrs/%NAME%)
 [![](https://github.com/ossrs/%NAME%/actions/workflows/droplet.yml/badge.svg)](https://github.com/ossrs/%NAME%/actions/workflows/droplet.yml)
 
 Deploy SRS to DigitalOcean droplet.

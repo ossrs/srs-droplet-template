@@ -1,6 +1,6 @@
 # srs-droplet-template
 
-![](http://ossrs.net/gif/v1/sls.gif?site=github.com&path=/k8s/droplet/ossrs/srs-droplet-template)
+![](http://ossrs.net/gif/v1/sls.gif?site=github.com&path=/tmpl/vm/droplet/ossrs/srs-droplet-template)
 [![](https://github.com/ossrs/srs-droplet-template/actions/workflows/droplet.yml/badge.svg)](https://github.com/ossrs/srs-droplet-template/actions/workflows/droplet.yml)
 
 Deploy SRS to DigitalOcean droplet by GitHub Actions.
