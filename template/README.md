@@ -45,24 +45,27 @@ Try to modify the [README.md](README.md), then push to your repository, your dro
 
 ## HTTPS by SSL files (Optional)
 
-For HTTPS, you need a SSL cert from CA, such as [ssls.com](https://www.ssls.com/), or the actions will generate a
-self-signed SSL cert.
-
 Please set the bellow [secrets](https://github.com/ossrs/%NAME%/settings/secrets/actions),
 then click the [Run workflow](https://github.com/ossrs/%NAME%/actions/workflows/droplet.yml) manually:
 
 * `DIGITALOCEAN_SSL_KEY` is the SSL key file, by `cat server.key`
-* `DIGITALOCEAN_SSL_CERT` is the SSL cert file, by `cat server.crt`
+* `DIGITALOCEAN_SSL_CERT` is the SSL cert file, by `cat server.crt` or `cat server.pem`
 
 > Note: This is optional, and the workflow will generate a self-signed if the secrets are not assigned.
 
 > For self-signed SSL certificate, please click the blank of page, and enter the magic word `thisisunsafe` without
 > space, please read [Command to Trust a Certificate in Chrome](https://www.youtube.com/watch?v=7J3vSN3pCjI)
 
-> If you got a domain name, please setup the DNS zone with the droplet IP.
+> For HTTPS, you need a SSL cert from CA, such as [ssls.com](https://www.ssls.com/), by default the actions will generate a
+> self-signed SSL cert. The ssl files generate by `certbot` also works well, to config the file to the secrets, please read
+> [How To Secure Nginx with Let's Encrypt on Ubuntu 18.04](https://www.digitalocean.com/community/tutorials/how-to-secure-nginx-with-let-s-encrypt-on-ubuntu-18-04).
 
-> Note: Other proxy servers also work well with SRS, for example,
+> You need a domain, because it's impossible to enable HTTPS without a domain. It's ok to add a `A Record`, or add by
+> [How to Add Domains](https://docs.digitalocean.com/products/networking/dns/how-to/add-domains/).
+
+> Note: Any proxy servers also work well with SRS, for example,
 > [Nginx](https://github.com/ossrs/srs/issues/2881#nginx-proxy) or
+> [HTTPX](https://github.com/ossrs/srs/issues/2881#httpx-proxy) or
 > [CaddyServer](https://github.com/ossrs/srs/issues/2881#caddy-proxy).
 
 ## Resources
